@@ -374,6 +374,17 @@
         <span class="size-val" id="size-val">90%</span>
       </div>
     </div>
+    <div class="setting-group">
+      <label>CORS Proxy URL <span style="color:#64748b;font-weight:600;font-size:11px">(for loading links from other sites)</span></label>
+      <input id="proxy-input" type="url" placeholder="https://your-worker.workers.dev/" style="
+        width: 100%; padding: 10px 14px; border-radius: 12px; border: 2px solid #334155;
+        background: #0f172a; color: #fff; font-size: 13px; font-family: 'Baloo 2', sans-serif;
+        font-weight: 600; outline: none;
+      " />
+      <div style="font-size:11px;color:#64748b;margin-top:6px;line-height:1.4;">
+        Deploy the free proxy worker from <span style="color:#fbbf24">proxy-worker.js</span> to Cloudflare Workers and paste the URL here.
+      </div>
+    </div>
     <div class="btn-row">
       <button id="save-settings">Save</button>
       <button id="cancel-settings">Cancel</button>
@@ -554,28 +565,33 @@ function onError(msg, hint) {
   document.getElementById('error-toast').classList.add('active');
 }
 
-// ── Load from URL (auto-retries with CORS proxy if needed) ──
-const CORS_PROXIES = [
-  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
+// ── CORS proxy using Cloudflare Worker (same origin, no size limits) ──
+// Host proxy-worker.js on Cloudflare Workers and set CORS_PROXY_URL below.
+// If you haven't deployed it, URL loading will still work for CORS-friendly servers.
+let CORS_PROXY_URL = localStorage.getItem('glb_cors_proxy') || '';
 
-async function fetchWithCORSFallback(url) {
-  // Try direct first
+async function fetchWithProxy(url) {
+  // Try direct first (works if server has CORS headers)
   try {
     const resp = await fetch(url, { mode: 'cors' });
     if (resp.ok) return await resp.arrayBuffer();
-  } catch (e) { /* CORS blocked, try proxies */ }
+  } catch (e) { /* CORS blocked */ }
 
-  // Try each proxy in order
-  for (const proxify of CORS_PROXIES) {
+  // Try via Cloudflare Worker proxy
+  if (CORS_PROXY_URL) {
     try {
-      const proxyUrl = proxify(url);
-      const resp = await fetch(proxyUrl);
+      const resp = await fetch(CORS_PROXY_URL + encodeURIComponent(url));
       if (resp.ok) return await resp.arrayBuffer();
-    } catch (e) { /* try next */ }
+    } catch (e) { /* proxy failed */ }
   }
-  throw new Error('Could not fetch (CORS blocked and all proxies failed)');
+
+  // Last resort: try allorigins (may fail for large files)
+  try {
+    const resp = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
+    if (resp.ok) return await resp.arrayBuffer();
+  } catch (e) { /* failed */ }
+
+  throw new Error('Could not fetch (CORS blocked and no proxy available)');
 }
 
 function loadFromURL(rawUrl) {
@@ -586,14 +602,14 @@ function loadFromURL(rawUrl) {
   const driveMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (driveMatch) url = `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
 
-  fetchWithCORSFallback(url).then(buffer => {
+  fetchWithProxy(url).then(buffer => {
     gltfLoader.parse(buffer, '', onModelLoaded, (err) => {
       console.error(err);
       onError('Could not parse the file', 'Make sure the link points to a valid .glb or .gltf 3D model file');
     });
   }).catch(err => {
     console.error(err);
-    onError('Could not load from URL', 'The server blocked the request — try uploading the file instead');
+    onError('Could not load from URL', 'The server blocked the request — try uploading the file instead (📂)');
   });
 }
 
@@ -815,6 +831,7 @@ const sizeVal = document.getElementById('size-val');
 document.getElementById('gear-btn').addEventListener('click', () => {
   sizeSlider.value = defaultFill;
   sizeVal.textContent = defaultFill + '%';
+  document.getElementById('proxy-input').value = CORS_PROXY_URL;
   settingsOverlay.classList.add('active');
 });
 
@@ -825,6 +842,8 @@ sizeSlider.addEventListener('input', () => {
 document.getElementById('save-settings').addEventListener('click', () => {
   defaultFill = parseInt(sizeSlider.value);
   localStorage.setItem('glb_fill', defaultFill);
+  CORS_PROXY_URL = document.getElementById('proxy-input').value.trim().replace(/\/+$/, '');
+  localStorage.setItem('glb_cors_proxy', CORS_PROXY_URL);
   settingsOverlay.classList.remove('active');
   if (currentModel) centerAndFit(currentModel);
 });
