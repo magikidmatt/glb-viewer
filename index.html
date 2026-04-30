@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>3D Magic Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    background: #0f172a;
+    color: #fff; 
+    font-family: 'Baloo 2', -apple-system, sans-serif;
+    overflow: hidden;
+    height: 100dvh;
+    width: 100vw;
+  }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; position: fixed; inset: 0; }
+
+  /* ── Top bar ── */
+  #ui {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    padding: env(safe-area-inset-top, 10px) 10px 10px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    pointer-events: none;
+  }
+  #ui > * { pointer-events: auto; }
+
+  #url-input {
+    flex: 1;
+    padding: 12px 14px;
+    border-radius: 50px;
+    border: 3px solid #fbbf24;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 15px;
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 600;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    outline: none;
+    display: none;
+  }
+  #url-input.visible { display: block; }
+  #url-input::placeholder { color: rgba(255,255,255,0.4); }
+  #url-input:focus { border-color: #34d399; box-shadow: 0 0 20px rgba(52,211,153,0.3); }
+
+  #link-btn {
+    width: 44px; height: 44px;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #818cf8, #6366f1);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+  }
+  #link-btn:active { transform: scale(0.9); }
+
+  #load-btn {
+    padding: 0 18px;
+    height: 44px;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #f472b6, #c084fc);
+    color: #fff;
+    font-size: 16px;
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    box-shadow: 0 4px 12px rgba(192,132,252,0.4);
+  }
+  #load-btn:active { transform: scale(0.9); }
+
+  #gear-btn {
+    width: 44px; height: 44px;
+    border-radius: 50px;
+    border: none;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.3s;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  #gear-btn:active { transform: rotate(60deg) scale(0.9); }
+
+  #upload-btn {
+    width: 44px; height: 44px;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #fbbf24, #f97316);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(251,191,36,0.4);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    padding: 0;
+  }
+  #upload-btn:active { transform: scale(0.9); }
+
+  /* ── Bottom toolbar ── */
+  #toolbar {
+    position: fixed;
+    bottom: env(safe-area-inset-bottom, 0);
+    left: 0; right: 0;
+    z-index: 10;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+    transition: opacity 0.5s;
+    opacity: 0;
+  }
+  #toolbar.visible { opacity: 1; pointer-events: auto; }
+
+  .tool-btn {
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: transform 0.2s, border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .tool-btn:active { transform: scale(0.85); }
+  .tool-btn.active { border-color: #fbbf24; background: rgba(251,191,36,0.2); }
+  .tool-btn .tool-label {
+    position: absolute;
+    bottom: -20px;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.5);
+    white-space: nowrap;
+  }
+
+  /* ── Settings panel ── */
+  #settings-overlay {
+    position: fixed; inset: 0; z-index: 30;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  #settings-overlay.active { display: flex; }
+  #settings-panel {
+    background: #1e293b;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-radius: 24px;
+    padding: 28px 24px;
+    width: 88%;
+    max-width: 340px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  #settings-panel h2 {
+    font-size: 20px; font-weight: 800;
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .setting-group {
+    margin-bottom: 18px;
+  }
+  .setting-group label {
+    display: block;
+    font-size: 13px; font-weight: 700;
+    color: #94a3b8; margin-bottom: 10px;
+  }
+  .setting-group .slider-row {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .setting-group input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    border-radius: 4px;
+    background: #334155;
+    outline: none;
+  }
+  .setting-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #fbbf24, #f97316);
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(251,191,36,0.4);
+  }
+  .setting-group .size-val {
+    font-size: 18px; font-weight: 800;
+    color: #fbbf24;
+    min-width: 44px;
+    text-align: center;
+  }
+  #settings-panel .btn-row {
+    display: flex; gap: 10px; margin-top: 24px;
+  }
+  #settings-panel .btn-row button {
+    flex: 1; padding: 12px;
+    border-radius: 14px; border: none;
+    font-family: 'Baloo 2', sans-serif;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: transform 0.1s;
+  }
+  #settings-panel .btn-row button:active { transform: scale(0.96); }
+  #save-settings { background: #fbbf24; color: #1e293b; }
+  #cancel-settings { background: rgba(255,255,255,0.1); color: #94a3b8; }
+
+  /* ── Welcome ── */
+  #welcome {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+  #welcome.hidden { opacity: 0; }
+  #welcome .emoji { font-size: 80px; margin-bottom: 12px; animation: wobble 2s ease-in-out infinite; }
+  @keyframes wobble {
+    0%,100% { transform: rotate(-5deg) scale(1); }
+    25% { transform: rotate(5deg) scale(1.05); }
+    75% { transform: rotate(-3deg) scale(1.02); }
+  }
+  #welcome h1 {
+    font-size: 32px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fbbf24, #f472b6, #818cf8, #34d399);
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: rainbow 3s ease infinite;
+    margin-bottom: 8px;
+  }
+  @keyframes rainbow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  #welcome p { font-size: 16px; color: #94a3b8; max-width: 340px; line-height: 1.6; }
+
+  /* ── Loading ── */
+  #loading {
+    position: fixed; inset: 0; z-index: 20;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  #loading.active { display: flex; }
+  .loader-emoji { font-size: 64px; animation: spin-bounce 1.2s ease-in-out infinite; }
+  @keyframes spin-bounce {
+    0% { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.2); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
+  #loading span { font-size: 20px; font-weight: 700; color: #fbbf24; }
+
+  /* ── Error ── */
+  #error-toast {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 25; display: none;
+    flex-direction: column; align-items: center; gap: 12px;
+    background: #1e293b; color: #fff;
+    padding: 28px 32px; border-radius: 28px;
+    border: 3px solid #f472b6;
+    box-shadow: 0 0 40px rgba(244,114,182,0.3);
+    text-align: center; max-width: 320px;
+  }
+  #error-toast.active { display: flex; }
+  #error-toast .err-emoji { font-size: 52px; }
+  #error-toast .err-msg { font-size: 16px; font-weight: 700; line-height: 1.5; }
+  #error-toast .err-hint { font-size: 13px; color: #94a3b8; line-height: 1.4; }
+  #error-toast button {
+    margin-top: 4px; padding: 10px 28px;
+    border: none; border-radius: 50px;
+    background: linear-gradient(135deg, #f472b6, #c084fc);
+    color: #fff;
+    font-family: 'Baloo 2', sans-serif;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+  }
+
+  /* ── Confetti canvas ── */
+  #confetti-canvas {
+    position: fixed; inset: 0; z-index: 15;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <input id="url-input" type="url" placeholder="Paste a link to a .glb file..." />
+  <button id="link-btn" title="Load from link">🔗</button>
+  <button id="load-btn" title="Go!">Go!</button>
+  <button id="upload-btn" title="Pick a file from your device">📂</button>
+  <button id="gear-btn" title="Settings">⚙️</button>
+  <input id="file-input" type="file" accept=".glb,.gltf" hidden />
+</div>
+
+<div id="toolbar">
+  <button class="tool-btn" id="btn-spin" title="Auto Spin">🔄</button>
+  <button class="tool-btn" id="btn-reset" title="Reset View">🏠</button>
+  <button class="tool-btn" id="btn-photo" title="Take Photo">📸</button>
+</div>
+
+<div id="welcome">
+  <div class="emoji">🪄</div>
+  <h1>3D Magic Viewer</h1>
+  <p>Paste a link above or tap 📂 to bring a 3D model to life!</p>
+</div>
+
+<div id="loading">
+  <div class="loader-emoji">🚀</div>
+  <span>Bringing your model to life...</span>
+</div>
+
+<div id="error-toast">
+  <div class="err-emoji">😵</div>
+  <div class="err-msg">Oops! Something went wrong</div>
+  <div class="err-hint">Make sure it's a .glb or .gltf 3D model file</div>
+  <button id="error-dismiss">Try Again</button>
+</div>
+
+<canvas id="confetti-canvas"></canvas>
+
+<div id="settings-overlay">
+  <div id="settings-panel">
+    <h2>⚙️ Settings</h2>
+    <div class="setting-group">
+      <label>Default Model Size</label>
+      <div class="slider-row">
+        <input id="size-slider" type="range" min="10" max="100" value="90" />
+        <span class="size-val" id="size-val">90%</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button id="save-settings">Save</button>
+      <button id="cancel-settings">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+// ── Renderer ──
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.3;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// ── Scene ──
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f172a);
+scene.fog = new THREE.Fog(0x0f172a, 15, 40);
+
+// Stars
+const starsGeo = new THREE.BufferGeometry();
+const starsPos = [];
+for (let i = 0; i < 500; i++) {
+  starsPos.push((Math.random() - 0.5) * 60, Math.random() * 30 + 2, (Math.random() - 0.5) * 60);
+}
+starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starsPos, 3));
+const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.9 });
+const stars = new THREE.Points(starsGeo, starsMat);
+scene.add(stars);
+
+// Glowing ring on the ground
+const ringGeo = new THREE.TorusGeometry(4.25, 0.03, 8, 128);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.6 });
+const ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x = -Math.PI / 2;
+ring.position.y = 0;
+scene.add(ring);
+
+// ── Camera ──
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
+camera.position.set(3, 2.5, 3);
+
+// ── Controls ──
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.rotateSpeed = 0.6;
+controls.zoomSpeed = 1.2;
+controls.panSpeed = 0.6;
+controls.maxPolarAngle = Math.PI * 0.85;
+controls.minDistance = 0.3;
+controls.maxDistance = 50;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.target.set(0, 1, 0);
+
+// ── Lights ──
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
+sun.position.set(5, 10, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+scene.add(sun);
+const pinkLight = new THREE.PointLight(0xf472b6, 1.5, 20);
+pinkLight.position.set(-4, 5, -2);
+scene.add(pinkLight);
+const blueLight = new THREE.PointLight(0x818cf8, 1.5, 20);
+blueLight.position.set(4, 3, -4);
+scene.add(blueLight);
+const greenLight = new THREE.PointLight(0x34d399, 1, 15);
+greenLight.position.set(0, 6, 4);
+scene.add(greenLight);
+scene.add(new THREE.HemisphereLight(0xfff8e7, 0x334155, 0.6));
+
+// ── Loaders ──
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/libs/draco/');
+const gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader);
+
+// ── State ──
+let currentModel = null;
+let autoSpin = false;
+let defaultFill = parseInt(localStorage.getItem('glb_fill')) || 90;
+
+function clearModel() {
+  if (currentModel) {
+    scene.remove(currentModel);
+    currentModel.traverse(c => {
+      if (c.isMesh) {
+        c.geometry.dispose();
+        if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+        else c.material.dispose();
+      }
+    });
+    currentModel = null;
+  }
+}
+
+function centerAndFit(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  
+  // Reset model transform
+  object.rotation.set(0, 0, 0);
+  
+  // Place model so its center is at origin, sitting on ground
+  object.position.sub(center);
+  object.position.y += size.y / 2;
+
+  const targetY = size.y / 2;
+
+  // Calculate camera distance so the model fits within defaultFill% of the viewport
+  const fillFraction = defaultFill / 100;
+  const fov = camera.fov * (Math.PI / 180);
+  const aspect = window.innerWidth / window.innerHeight;
+  
+  // How much vertical distance needed for model height
+  const vertDist = (size.y / 2) / Math.tan(fov / 2);
+  // How much horizontal distance needed for model width
+  const horizFov = 2 * Math.atan(Math.tan(fov / 2) * aspect);
+  const horizDist = (size.x / 2) / Math.tan(horizFov / 2);
+  
+  // Use whichever is larger, scaled by fill setting
+  const dist = Math.max(vertDist, horizDist) / fillFraction;
+
+  camera.position.set(dist * 0.6, dist * 0.5, dist * 0.8);
+  controls.target.set(0, targetY, 0);
+  controls.update();
+  
+  camera.near = Math.max(size.length() * 0.001, 0.01);
+  camera.far = size.length() * 100;
+  camera.updateProjectionMatrix();
+
+  // Scale ring to fit model
+  const scale = Math.max(size.length() * 0.8, 1);
+  ring.scale.set(scale, scale, 1);
+}
+
+function onModelLoaded(gltf) {
+  const model = gltf.scene;
+  model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  scene.add(model);
+  currentModel = model;
+  centerAndFit(model);
+
+  document.getElementById('loading').classList.remove('active');
+  document.getElementById('welcome').classList.add('hidden');
+  document.getElementById('toolbar').classList.add('visible');
+
+  // Celebration!
+  launchConfetti();
+  playSound('pop');
+}
+
+function onError(msg, hint) {
+  document.getElementById('loading').classList.remove('active');
+  document.querySelector('#error-toast .err-msg').textContent = msg;
+  document.querySelector('#error-toast .err-hint').textContent = hint;
+  document.getElementById('error-toast').classList.add('active');
+}
+
+// ── Load from URL (auto-retries with CORS proxy if needed) ──
+const CORS_PROXIES = [
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+];
+
+async function fetchWithCORSFallback(url) {
+  // Try direct first
+  try {
+    const resp = await fetch(url, { mode: 'cors' });
+    if (resp.ok) return await resp.arrayBuffer();
+  } catch (e) { /* CORS blocked, try proxies */ }
+
+  // Try each proxy in order
+  for (const proxify of CORS_PROXIES) {
+    try {
+      const proxyUrl = proxify(url);
+      const resp = await fetch(proxyUrl);
+      if (resp.ok) return await resp.arrayBuffer();
+    } catch (e) { /* try next */ }
+  }
+  throw new Error('Could not fetch (CORS blocked and all proxies failed)');
+}
+
+function loadFromURL(rawUrl) {
+  document.getElementById('error-toast').classList.remove('active');
+  document.getElementById('loading').classList.add('active');
+  clearModel();
+  let url = rawUrl.trim();
+  const driveMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveMatch) url = `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+
+  fetchWithCORSFallback(url).then(buffer => {
+    gltfLoader.parse(buffer, '', onModelLoaded, (err) => {
+      console.error(err);
+      onError('Could not parse the file', 'Make sure the link points to a valid .glb or .gltf 3D model file');
+    });
+  }).catch(err => {
+    console.error(err);
+    onError('Could not load from URL', 'The server blocked the request — try uploading the file instead');
+  });
+}
+
+// ── Load from file ──
+function loadFromFile(file) {
+  document.getElementById('error-toast').classList.remove('active');
+  document.getElementById('loading').classList.add('active');
+  clearModel();
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    gltfLoader.parse(e.target.result, '', onModelLoaded,
+      (err) => { console.error(err); onError('Could not read the file', 'Make sure it is a valid .glb or .gltf 3D file'); }
+    );
+  };
+  reader.onerror = () => onError('Could not read the file', 'The file might be corrupted');
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Confetti! ──
+const confettiCanvas = document.getElementById('confetti-canvas');
+const ctx2d = confettiCanvas.getContext('2d');
+confettiCanvas.width = window.innerWidth;
+confettiCanvas.height = window.innerHeight;
+let confettiPieces = [];
+
+function launchConfetti() {
+  const colors = ['#fbbf24','#f472b6','#818cf8','#34d399','#38bdf8','#fb923c','#c084fc','#f87171'];
+  for (let i = 0; i < 80; i++) {
+    confettiPieces.push({
+      x: window.innerWidth / 2 + (Math.random() - 0.5) * 200,
+      y: window.innerHeight / 2,
+      vx: (Math.random() - 0.5) * 12,
+      vy: Math.random() * -14 - 4,
+      size: Math.random() * 8 + 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * 360,
+      rotSpeed: (Math.random() - 0.5) * 10,
+      life: 1,
+    });
+  }
+}
+
+function updateConfetti() {
+  ctx2d.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  confettiPieces = confettiPieces.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.3;
+    p.rotation += p.rotSpeed;
+    p.life -= 0.012;
+    if (p.life <= 0) return false;
+    ctx2d.save();
+    ctx2d.translate(p.x, p.y);
+    ctx2d.rotate(p.rotation * Math.PI / 180);
+    ctx2d.globalAlpha = p.life;
+    ctx2d.fillStyle = p.color;
+    ctx2d.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+    ctx2d.restore();
+    return true;
+  });
+}
+
+// ── Sound effects (Web Audio API — no files needed) ──
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+  // Resume context if suspended (iOS requirement)
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const now = audioCtx.currentTime;
+  
+  if (type === 'pop') {
+    // Happy pop — rising tone
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }
+  else if (type === 'whoosh') {
+    // Whoosh — sweeping noise
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(200, now);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+    osc.frequency.exponentialRampToValueAtTime(100, now + 0.25);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+  else if (type === 'boing') {
+    // Bouncy boing — spring sound
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.exponentialRampToValueAtTime(150, now + 0.3);
+    osc.frequency.setValueAtTime(500, now + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+  else if (type === 'shutter') {
+    // Camera shutter click
+    const bufferSize = audioCtx.sampleRate * 0.15;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.03));
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 1000;
+    noise.connect(filter).connect(gain).connect(audioCtx.destination);
+    noise.start(now);
+  }
+}
+
+// ── Screenshot ──
+function takeScreenshot() {
+  if (!currentModel) return;
+  // Hide UI temporarily
+  const uiEls = document.querySelectorAll('#ui, #toolbar');
+  uiEls.forEach(el => el.style.opacity = '0');
+  
+  // Flash effect
+  const flash = document.createElement('div');
+  flash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:50;opacity:0.8;transition:opacity 0.4s;pointer-events:none;';
+  document.body.appendChild(flash);
+  
+  // Render one clean frame
+  renderer.render(scene, camera);
+  
+  // Capture
+  const dataUrl = renderer.domElement.toDataURL('image/png');
+  
+  // Download
+  const link = document.createElement('a');
+  link.download = '3d-model-' + Date.now() + '.png';
+  link.href = dataUrl;
+  link.click();
+  
+  // Restore UI & flash
+  setTimeout(() => {
+    flash.style.opacity = '0';
+    setTimeout(() => flash.remove(), 400);
+    uiEls.forEach(el => el.style.opacity = '');
+  }, 100);
+}
+
+// ── Toolbar actions ──
+// Auto spin toggle
+document.getElementById('btn-spin').addEventListener('click', function() {
+  autoSpin = !autoSpin;
+  this.classList.toggle('active', autoSpin);
+  playSound('whoosh');
+});
+
+// Reset view
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (currentModel) {
+    currentModel.rotation.set(0, 0, 0);
+    centerAndFit(currentModel);
+    playSound('boing');
+  }
+});
+
+// Screenshot
+document.getElementById('btn-photo').addEventListener('click', () => {
+  takeScreenshot();
+  playSound('shutter');
+});
+
+// ── UI wiring ──
+const urlInput = document.getElementById('url-input');
+const loadBtn = document.getElementById('load-btn');
+const fileInput = document.getElementById('file-input');
+
+function handleLoad() { const url = urlInput.value.trim(); if (url) loadFromURL(url); urlInput.classList.remove('visible'); }
+loadBtn.addEventListener('click', handleLoad);
+urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLoad(); });
+document.getElementById('link-btn').addEventListener('click', () => {
+  const input = document.getElementById('url-input');
+  if (input.classList.contains('visible')) {
+    input.classList.remove('visible');
+  } else {
+    input.classList.add('visible');
+    input.focus();
+  }
+});
+document.getElementById('upload-btn').addEventListener('click', () => fileInput.click());
+document.getElementById('error-dismiss').addEventListener('click', () => document.getElementById('error-toast').classList.remove('active'));
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (file) loadFromFile(file);
+  fileInput.value = '';
+});
+
+// ── Settings panel ──
+const settingsOverlay = document.getElementById('settings-overlay');
+const sizeSlider = document.getElementById('size-slider');
+const sizeVal = document.getElementById('size-val');
+
+document.getElementById('gear-btn').addEventListener('click', () => {
+  sizeSlider.value = defaultFill;
+  sizeVal.textContent = defaultFill + '%';
+  settingsOverlay.classList.add('active');
+});
+
+sizeSlider.addEventListener('input', () => {
+  sizeVal.textContent = sizeSlider.value + '%';
+});
+
+document.getElementById('save-settings').addEventListener('click', () => {
+  defaultFill = parseInt(sizeSlider.value);
+  localStorage.setItem('glb_fill', defaultFill);
+  settingsOverlay.classList.remove('active');
+  if (currentModel) centerAndFit(currentModel);
+});
+
+document.getElementById('cancel-settings').addEventListener('click', () => {
+  settingsOverlay.classList.remove('active');
+});
+
+settingsOverlay.addEventListener('click', (e) => {
+  if (e.target === settingsOverlay) settingsOverlay.classList.remove('active');
+});
+
+// ── Animation loop ──
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Auto spin
+  if (autoSpin && currentModel) {
+    currentModel.rotation.y += 0.005;
+  }
+
+  // Animate stars twinkle
+  starsMat.opacity = 0.5 + Math.sin(t * 2) * 0.2;
+
+  // Pulse ring
+  const pulse = 1 + Math.sin(t * 3) * 0.03;
+  ring.scale.set(ring.scale.x > 1 ? ring.scale.x : pulse, ring.scale.x > 1 ? ring.scale.x : pulse, 1);
+  ringMat.opacity = 0.4 + Math.sin(t * 2) * 0.2;
+
+  // Orbit colored lights
+  pinkLight.position.x = Math.cos(t * 0.5) * 5;
+  pinkLight.position.z = Math.sin(t * 0.5) * 5;
+  blueLight.position.x = Math.cos(t * 0.3 + 2) * 5;
+  blueLight.position.z = Math.sin(t * 0.3 + 2) * 5;
+
+  controls.update();
+  renderer.render(scene, camera);
+  updateConfetti();
+}
+animate();
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  confettiCanvas.width = window.innerWidth;
+  confettiCanvas.height = window.innerHeight;
+  // Re-fit model to new window size
+  if (currentModel) centerAndFit(currentModel);
+});
+</script>
+</body>
+</html>
